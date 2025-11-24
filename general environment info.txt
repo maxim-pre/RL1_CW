@@ -1,0 +1,29 @@
+Action space:
+
+- motor speed between -1 and 1 for each joint (there are 4 joints).
+- Total: vector of length 4
+
+State space:
+
+- Head angular speed
+- angular velocity
+- horizontal speed
+- vertical speed
+- position of each joint (4)
+- angular speed of each joint (4)
+- legs contact with ground (2)
+- 10 lidar rangefinder measurements
+- Total: vector of length 24.
+
+Rewards:
+
+- Reward is given for moving forward, totaling 300+ points if reaching end.
+- If the robot falls, it gets -100.
+- Applying motor torque costs a small amount of points.
+- A more optimal agent will get a better score.
+
+Levels:
+
+- 2 Levels, Normal and Hardcore.
+- To solve the normal, need to get 300 points (reach end) in 1600 time steps.
+- To solve the hardcore, need 300 points (reach end) in 2000 time steps.
