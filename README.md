@@ -4,6 +4,11 @@
 ```bash
 git clone https://github.com/maxim-pre/RL1_CW.git
 cd RL1_CW
+
+
+python -m venv env # create virtual environment
+source env/bin/activate # activate virtual environment
+pip install -r requirements.txt # install packages from requirements file
 ```
 
 ### 1. Work from dev branch
