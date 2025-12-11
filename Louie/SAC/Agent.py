@@ -79,6 +79,114 @@ class SACAgent:
         self.actor_optimizer = None
         self.alpha_optimizer = None
 
+    def learn(self,
+              n_episodes=2000,
+              discount_factor=0.99,
+              minibatch_size=256,
+              tau=0.005,
+              random_exploration_steps=0,
+              actor_exploration_steps=0,
+              vid_every=50,
+              stop_after=None,
+              reset_optim=True,
+              reset_buffer=True,
+              # ====================== #
+              critic_lr=3e-4,
+              actor_lr=3e-4,
+              alpha_lr=3e-4,
+              critic_grad_clip=1.0,
+              actor_grad_clip=1.0,
+              alpha_grad_clip=0.0,
+              updates_per_step=1):
+
+        if reset_optim:
+            self.reset_optim(critic_lr, actor_lr, alpha_lr)
+        if reset_buffer:
+            self.reset_buffer()
+
+        self.random_exploration(random_exploration_steps)
+        self.actor_exploration(actor_exploration_steps)
+
+        total_step_count = 0
+        episode_rewards = []
+        episode_step_counts = []
+        episode_run_times = []
+        episode_alphas = []
+
+        for n in range(n_episodes):
+
+            print(f"Running Episode {n + 1}...")
+            start_time = time.time()
+            state, _ = self.env.reset()
+
+            done = False
+            episode_reward = 0
+            episode_step_count = 0
+
+            while not done:
+
+                action = self.select_action(state)
+                new_state, reward, terminal, truncated, _ = self.env.step(action)
+                done = terminal or truncated
+
+                self.save_transition(state, action, reward, new_state, done)
+
+                episode_step_count += 1
+                total_step_count += 1
+                episode_reward += reward
+
+                if self.buffer_fullness >= minibatch_size:
+
+                    for _ in range(updates_per_step):
+                        minibatch = self.sample_minibatch(minibatch_size)
+                        self.update_critic_networks(minibatch, discount_factor, critic_grad_clip)
+                        self.update_actor_network_and_alpha(minibatch, actor_grad_clip, alpha_grad_clip)
+                        self.soft_update_target_critics(tau)
+
+                state = new_state
+
+            end_time = time.time()
+            episode_run_time = end_time - start_time
+
+            print(f"Reward: {episode_reward:.2f} - Step Count: {episode_step_count} - Run Time: {episode_run_time:.2f}s - Alpha: {self.alpha:.5f} - Total Step Count: {total_step_count}")
+            episode_rewards.append(episode_reward)
+            episode_step_counts.append(episode_step_count)
+            episode_run_times.append(episode_run_time)
+            episode_alphas.append(self.alpha.item())
+
+            if stop_after is not None and all(ep_rew >= self.max_reward for ep_rew in episode_rewards[-stop_after:]):
+                break
+
+            if n % vid_every == 0:
+                self.test_episode(video=True, video_name=f"episode-{n + 1}")
+
+        self.save_run(episode_rewards,
+                      episode_step_counts,
+                      episode_run_times,
+                      episode_alphas,
+                      n_episodes,
+                      discount_factor,
+                      minibatch_size,
+                      tau,
+                      random_exploration_steps,
+                      actor_exploration_steps,
+                      stop_after,
+                      reset_optim,
+                      reset_buffer,
+                      critic_lr,
+                      actor_lr,
+                      alpha_lr,
+                      critic_grad_clip,
+                      actor_grad_clip,
+                      alpha_grad_clip,
+                      updates_per_step)
+
+    def reset_optim(self, critic_lr, actor_lr, alpha_lr):
+        self.critic1_optimizer = optim.Adam(self.critic_network1.parameters(), lr=critic_lr)
+        self.critic2_optimizer = optim.Adam(self.critic_network2.parameters(), lr=critic_lr)
+        self.actor_optimizer = optim.Adam(self.actor_network.parameters(), lr=actor_lr)
+        self.alpha_optimizer = optim.Adam([self.log_alpha], lr=alpha_lr)
+
     def reset_buffer(self):
         self.buffer_write_idx = 0
         self.buffer_fullness = 0
@@ -88,9 +196,42 @@ class SACAgent:
         self.buffer_next_states = torch.zeros((self.max_buffer_length, self.state_size), dtype=torch.float32, device=self.device)
         self.buffer_dones = torch.zeros((self.max_buffer_length, 1), dtype=torch.float32, device=self.device)
 
-    @property
-    def alpha(self):
-        return self.log_alpha.exp()
+    def random_exploration(self, num_steps: int):
+        print("Performing Random Exploration...")
+        step_count = 0
+        state, _ = self.env.reset()
+
+        while step_count < num_steps:
+
+            action_tensor = self.action_min + (self.action_max - self.action_min) * torch.rand(self.action_size, device=self.device)
+            action = action_tensor.cpu().numpy()
+            new_state, reward, terminal, truncated, _ = self.env.step(action)
+            done = terminal or truncated
+            self.save_transition(state, action, reward, new_state, done)
+
+            step_count += 1
+            state = new_state
+
+            if done:
+                state, _ = self.env.reset()
+
+    def actor_exploration(self, num_steps: int):
+        print("Performing Actor Exploration...")
+        step_count = 0
+        state, _ = self.env.reset()
+
+        while step_count < num_steps:
+
+            action = self.select_action(state)
+            new_state, reward, terminal, truncated, _ = self.env.step(action)
+            done = terminal or truncated
+            self.save_transition(state, action, reward, new_state, done)
+
+            step_count += 1
+            state = new_state
+
+            if done:
+                state, _ = self.env.reset()
 
     def select_action(self, state: np.ndarray) -> np.ndarray:
         """Select an action at the given state."""
@@ -195,6 +336,10 @@ class SACAgent:
             nn.utils.clip_grad_norm_([self.log_alpha], alpha_grad_clip)
         self.alpha_optimizer.step()
 
+    @property
+    def alpha(self):
+        return self.log_alpha.exp()
+
     def soft_update_target_critics(self, tau: float):
         """Soft update the target networks weights."""
         with torch.no_grad():
@@ -241,49 +386,6 @@ class SACAgent:
             os.rename("videos/rl-video-episode-0.mp4", f"videos/{video_name}.mp4")
 
         print(f"Reward: {test_episode_reward:.2f} - Step Count: {test_episode_step_count} - Run Time: {test_episode_run_time:.2f}s\n")
-
-    def random_exploration(self, num_steps: int):
-        print("Performing Random Exploration...")
-        step_count = 0
-        state, _ = self.env.reset()
-
-        while step_count < num_steps:
-
-            action_tensor = self.action_min + (self.action_max - self.action_min) * torch.rand(self.action_size, device=self.device)
-            action = action_tensor.cpu().numpy()
-            new_state, reward, terminal, truncated, _ = self.env.step(action)
-            done = terminal or truncated
-            self.save_transition(state, action, reward, new_state, done)
-
-            step_count += 1
-            state = new_state
-
-            if done:
-                state, _ = self.env.reset()
-
-    def actor_exploration(self, num_steps: int):
-        print("Performing Actor Exploration...")
-        step_count = 0
-        state, _ = self.env.reset()
-
-        while step_count < num_steps:
-
-            action = self.select_action(state)
-            new_state, reward, terminal, truncated, _ = self.env.step(action)
-            done = terminal or truncated
-            self.save_transition(state, action, reward, new_state, done)
-
-            step_count += 1
-            state = new_state
-
-            if done:
-                state, _ = self.env.reset()
-
-    def reset_optim(self, critic_lr, actor_lr, alpha_lr):
-        self.critic1_optimizer = optim.Adam(self.critic_network1.parameters(), lr=critic_lr)
-        self.critic2_optimizer = optim.Adam(self.critic_network2.parameters(), lr=critic_lr)
-        self.actor_optimizer = optim.Adam(self.actor_network.parameters(), lr=actor_lr)
-        self.alpha_optimizer = optim.Adam([self.log_alpha], lr=alpha_lr)
 
     def save_run(self,
                  episode_rewards: List,
@@ -343,105 +445,3 @@ class SACAgent:
 
         with open("outputs/settings.pkl", "wb") as f:
             pickle.dump(settings, f)
-
-    def learn(self,
-              n_episodes=2000,
-              discount_factor=0.99,
-              minibatch_size=256,
-              tau=0.005,
-              random_exploration_steps=0,
-              actor_exploration_steps=0,
-              vid_every=50,
-              stop_after=None,
-              reset_optim=True,
-              reset_buffer=True,
-              # ====================== #
-              critic_lr=3e-4,
-              actor_lr=3e-4,
-              alpha_lr=3e-4,
-              critic_grad_clip=1.0,
-              actor_grad_clip=1.0,
-              alpha_grad_clip=0.0,
-              updates_per_step=1):
-
-        if reset_optim:
-            self.reset_optim(critic_lr, actor_lr, alpha_lr)
-        if reset_buffer:
-            self.reset_buffer()
-
-        self.random_exploration(random_exploration_steps)
-        self.actor_exploration(actor_exploration_steps)
-
-        total_step_count = 0
-        episode_rewards = []
-        episode_step_counts = []
-        episode_run_times = []
-        episode_alphas = []
-
-        for n in range(n_episodes):
-
-            print(f"Running Episode {n + 1}...")
-            start_time = time.time()
-            state, _ = self.env.reset()
-
-            done = False
-            episode_reward = 0
-            episode_step_count = 0
-
-            while not done:
-
-                action = self.select_action(state)
-                new_state, reward, terminal, truncated, _ = self.env.step(action)
-                done = terminal or truncated
-
-                self.save_transition(state, action, reward, new_state, done)
-
-                episode_step_count += 1
-                total_step_count += 1
-                episode_reward += reward
-
-                if self.buffer_fullness >= minibatch_size:
-
-                    for _ in range(updates_per_step):
-                        minibatch = self.sample_minibatch(minibatch_size)
-                        self.update_critic_networks(minibatch, discount_factor, critic_grad_clip)
-                        self.update_actor_network_and_alpha(minibatch, actor_grad_clip, alpha_grad_clip)
-                        self.soft_update_target_critics(tau)
-
-                state = new_state
-
-            end_time = time.time()
-            episode_run_time = end_time - start_time
-
-            print(f"Reward: {episode_reward:.2f} - Step Count: {episode_step_count} - Run Time: {episode_run_time:.2f}s - Alpha: {self.alpha:.5f} - Total Step Count: {total_step_count}")
-            episode_rewards.append(episode_reward)
-            episode_step_counts.append(episode_step_count)
-            episode_run_times.append(episode_run_time)
-            episode_alphas.append(self.alpha.item())
-
-            if stop_after is not None and all(ep_rew >= self.max_reward for ep_rew in episode_rewards[-stop_after:]):
-                break
-
-            if n % vid_every == 0:
-                self.test_episode(video=True, video_name=f"episode-{n + 1}")
-
-        self.save_run(episode_rewards,
-                      episode_step_counts,
-                      episode_run_times,
-                      episode_alphas,
-                      n_episodes,
-                      discount_factor,
-                      minibatch_size,
-                      tau,
-                      random_exploration_steps,
-                      actor_exploration_steps,
-                      stop_after,
-                      reset_optim,
-                      reset_buffer,
-                      critic_lr,
-                      actor_lr,
-                      alpha_lr,
-                      critic_grad_clip,
-                      actor_grad_clip,
-                      alpha_grad_clip,
-                      updates_per_step)
