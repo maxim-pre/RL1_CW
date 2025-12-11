@@ -234,14 +234,12 @@ class SACAgent:
                 state, _ = self.env.reset()
 
     def select_action(self, state: np.ndarray) -> np.ndarray:
-        """Select an action at the given state."""
         with torch.no_grad():
             state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
             action_tensor, _ = self.actor_network.sample(state_tensor)
             return action_tensor.squeeze(0).cpu().numpy()
 
     def save_transition(self, state: np.ndarray, action: np.ndarray, reward: float, new_state: np.ndarray, done: bool):
-        """Save a transition."""
         self.buffer_states[self.buffer_write_idx] = torch.tensor(state, dtype=torch.float32, device=self.device)
         self.buffer_actions[self.buffer_write_idx] = torch.tensor(action, dtype=torch.float32, device=self.device)
         self.buffer_rewards[self.buffer_write_idx] = torch.tensor([reward], dtype=torch.float32, device=self.device)
@@ -252,7 +250,6 @@ class SACAgent:
         self.buffer_fullness = min(self.buffer_fullness + 1, self.max_buffer_length)
 
     def sample_minibatch(self, minibatch_size: int) -> Tuple[torch.tensor, ...]:
-        """Sample a minibatch from the replay buffer."""
         indices = torch.randint(0, self.buffer_fullness, (minibatch_size,), device=self.device)
 
         mb_states = self.buffer_states[indices]
@@ -267,7 +264,6 @@ class SACAgent:
                                minibatch: Tuple[torch.tensor, ...],
                                discount_factor: float,
                                critic_grad_clip: float):
-        """Update the critic networks."""
         mb_states, mb_actions, mb_rewards, mb_next_states, mb_dones = minibatch
         mb_state_actions = torch.cat([mb_states, mb_actions], dim=1)
 
@@ -303,7 +299,6 @@ class SACAgent:
                                        minibatch: Tuple[torch.tensor, ...],
                                        actor_grad_clip: float,
                                        alpha_grad_clip: float):
-        """Update the actor network."""
         mb_states, *_ = minibatch
 
         for p in self.critic_network1.parameters():
@@ -324,12 +319,14 @@ class SACAgent:
         for p in self.critic_network2.parameters():
             p.requires_grad = True
 
+        # Update actor network.
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         if actor_grad_clip > 0.0:
             nn.utils.clip_grad_norm_(self.actor_network.parameters(), actor_grad_clip)
         self.actor_optimizer.step()
 
+        # Update alpha.
         self.alpha_optimizer.zero_grad()
         alpha_loss.backward()
         if alpha_grad_clip > 0.0:
@@ -341,7 +338,6 @@ class SACAgent:
         return self.log_alpha.exp()
 
     def soft_update_target_critics(self, tau: float):
-        """Soft update the target networks weights."""
         with torch.no_grad():
             for w_target, w_local in zip(self.target_critic_network1.parameters(), self.critic_network1.parameters()):
                 w_target.data.copy_(tau * w_local.data + (1 - tau) * w_target.data)
