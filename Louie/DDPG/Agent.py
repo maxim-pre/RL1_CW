@@ -144,7 +144,7 @@ class DDPGAgent:
             end_time = time.time()
             episode_run_time = end_time - start_time
 
-            print(f"Reward: {episode_reward:.2f} - Step Count: {episode_step_count} - Run Time: {episode_run_time:.2f}s - Total Step Count: {total_step_count} - Exploratory Noise: {exploratory_noise}")
+            print(f"Reward: {episode_reward:.2f} - Step Count: {episode_step_count} - Run Time: {episode_run_time:.2f}s - Total Step Count: {total_step_count} - Exploratory Noise: {exploratory_noise:.5f}")
             episode_rewards.append(episode_reward)
             episode_step_counts.append(episode_step_count)
             episode_run_times.append(episode_run_time)

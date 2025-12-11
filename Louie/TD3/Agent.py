@@ -95,7 +95,7 @@ class TD3Agent:
               actor_grad_clip=1.0,
               exploratory_noise_start=0.3,
               exploratory_noise_min=0.05,
-              exploratory_noise_decay=2.5e-7,
+              exploratory_noise_decay=1e-6,
               exploratory_noise_clip=0.3,
               policy_noise=0.2,
               policy_noise_clip=0.5,
@@ -165,7 +165,7 @@ class TD3Agent:
             end_time = time.time()
             episode_run_time = end_time - start_time
 
-            print(f"Reward: {episode_reward:.2f} - Step Count: {episode_step_count} - Run Time: {episode_run_time:.2f}s - Total Step Count: {total_step_count} - Exploratory Noise: {exploratory_noise}")
+            print(f"Reward: {episode_reward:.2f} - Step Count: {episode_step_count} - Run Time: {episode_run_time:.2f}s - Total Step Count: {total_step_count} - Exploratory Noise: {exploratory_noise:.5f}")
             episode_rewards.append(episode_reward)
             episode_step_counts.append(episode_step_count)
             episode_run_times.append(episode_run_time)
