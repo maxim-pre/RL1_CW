@@ -89,8 +89,8 @@ class TD3Agent:
               reset_optim=True,
               reset_buffer=True,
               # ====================== #
-              critic_lr=1e-3,
-              actor_lr=1e-4,
+              critic_lr=3e-4,
+              actor_lr=3e-4,
               critic_grad_clip=1.0,
               actor_grad_clip=1.0,
               exploratory_noise_start=0.3,
@@ -175,6 +175,31 @@ class TD3Agent:
 
             if n % vid_every == 0:
                 self.test_episode(video=True, video_name=f"episode-{n + 1}")
+
+        self.save_run(episode_rewards,
+                      episode_step_counts,
+                      episode_run_times,
+                      n_episodes,
+                      discount_factor,
+                      minibatch_size,
+                      tau,
+                      random_exploration_steps,
+                      actor_exploration_steps,
+                      stop_after,
+                      reset_optim,
+                      reset_buffer,
+                      critic_lr,
+                      actor_lr,
+                      critic_grad_clip,
+                      actor_grad_clip,
+                      exploratory_noise_start,
+                      exploratory_noise_min,
+                      exploratory_noise_decay,
+                      exploratory_noise_clip,
+                      policy_noise,
+                      policy_noise_clip,
+                      policy_delay,
+                      updates_per_step)
 
     def reset_optim(self, critic_lr, actor_lr):
         self.critic1_optimizer = optim.Adam(self.critic_network1.parameters(), lr=critic_lr)
@@ -444,28 +469,3 @@ class TD3Agent:
 
         with open("outputs/settings.pkl", "wb") as f:
             pickle.dump(settings, f)
-
-        self.save_run(episode_rewards,
-                      episode_step_counts,
-                      episode_run_times,
-                      n_episodes,
-                      discount_factor,
-                      minibatch_size,
-                      tau,
-                      random_exploration_steps,
-                      actor_exploration_steps,
-                      stop_after,
-                      reset_optim,
-                      reset_buffer,
-                      critic_lr,
-                      actor_lr,
-                      critic_grad_clip,
-                      actor_grad_clip,
-                      exploratory_noise_start,
-                      exploratory_noise_min,
-                      exploratory_noise_decay,
-                      exploratory_noise_clip,
-                      policy_noise,
-                      policy_noise_clip,
-                      policy_delay,
-                      updates_per_step)
