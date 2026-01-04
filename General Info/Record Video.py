@@ -4,8 +4,8 @@ import gymnasium as gym
 env = gym.make("BipedalWalker-v3", hardcore=False, render_mode="rgb_array")
 env = RecordVideo(
     env,
-    video_folder="cartpole-agent",    # Folder to save videos
-    name_prefix="eval",               # Prefix for video filenames
+    video_folder="test",    # Folder to save videos
+    name_prefix="eval3",               # Prefix for video filenames
     episode_trigger=lambda x: True    # Record every episode
 )
 
